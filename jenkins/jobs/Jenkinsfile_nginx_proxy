@@ -1,5 +1,10 @@
 pipeline {
-    agent any
+    agent {
+        docker {
+            image 'docker:latest'
+            args '-v /var/run/docker.sock:/var/run/docker.sock'
+        }
+    }
     
     parameters {
         string(name: 'DOCKER_HUB_USERNAME', defaultValue: 'zivism', description: 'Docker Hub username')
@@ -17,19 +22,17 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 dir('nginx-proxy') {
-                    script {
-                        docker.build("${params.DOCKER_HUB_USERNAME}/${params.IMAGE_NAME}:${params.IMAGE_TAG}")
-                    }
+                    sh "docker build -t ${params.DOCKER_HUB_USERNAME}/${params.IMAGE_NAME}:${params.IMAGE_TAG} ."
                 }
             }
         }
         
         stage('Push to Docker Hub') {
             steps {
-                script {
-                    docker.withRegistry('https://registry.hub.docker.com', 'docker-hub-credentials') {
-                        docker.image("${params.DOCKER_HUB_USERNAME}/${params.IMAGE_NAME}:${params.IMAGE_TAG}").push()
-                    }
+                withCredentials([string(credentialsId: 'docker-hub-credentials', variable: 'DOCKER_HUB_PASSWORD')]) {
+                    sh "echo ${DOCKER_HUB_PASSWORD} | docker login -u ${params.DOCKER_HUB_USERNAME} --password-stdin"
+                    sh "docker push ${params.DOCKER_HUB_USERNAME}/${params.IMAGE_NAME}:${params.IMAGE_TAG}"
+                    sh "docker logout"
                 }
             }
         }

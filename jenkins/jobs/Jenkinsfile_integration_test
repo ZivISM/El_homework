@@ -1,5 +1,10 @@
 pipeline {
-    agent any
+    agent {
+        docker {
+            image 'docker:latest'
+            args '-v /var/run/docker.sock:/var/run/docker.sock'
+        }
+    }
     
     parameters {
         string(name: 'DOCKER_HUB_USERNAME', defaultValue: 'zivism', description: 'Docker Hub username')
@@ -15,38 +20,39 @@ pipeline {
         
         stage('Prepare for Testing') {
             steps {
-                script {
-                    // Pull the latest images
-                    docker.image("${params.DOCKER_HUB_USERNAME}/docker-monitor:latest").pull()
-                    docker.image("${params.DOCKER_HUB_USERNAME}/nginx-proxy:latest").pull()
-                    
-                    // Create network
-                    sh "docker network create --driver bridge test-network || true"
-                    
-                    // Run Docker Monitor container
-                    sh """
-                    docker run -d --name integration-docker-monitor \
-                      --network test-network \
-                      -v /var/run/docker.sock:/var/run/docker.sock \
-                      ${params.DOCKER_HUB_USERNAME}/docker-monitor:latest
-                    """
-                    
-                    // Run Nginx Proxy container
-                    sh """
-                    docker run -d --name integration-nginx-proxy \
-                      --network test-network \
-                      -p ${params.LOCAL_PORT}:80 \
-                      ${params.DOCKER_HUB_USERNAME}/nginx-proxy:latest
-                    """
-                    
-                    // Wait for containers to start
-                    sleep(time: 10, unit: 'SECONDS')
-                }
+                // Pull the latest images
+                sh "docker pull ${params.DOCKER_HUB_USERNAME}/docker-monitor:latest"
+                sh "docker pull ${params.DOCKER_HUB_USERNAME}/nginx-proxy:latest"
+                
+                // Create network
+                sh "docker network create --driver bridge test-network || true"
+                
+                // Run Docker Monitor container
+                sh """
+                docker run -d --name integration-docker-monitor \\
+                  --network test-network \\
+                  -v /var/run/docker.sock:/var/run/docker.sock \\
+                  ${params.DOCKER_HUB_USERNAME}/docker-monitor:latest
+                """
+                
+                // Run Nginx Proxy container
+                sh """
+                docker run -d --name integration-nginx-proxy \\
+                  --network test-network \\
+                  -p ${params.LOCAL_PORT}:80 \\
+                  ${params.DOCKER_HUB_USERNAME}/nginx-proxy:latest
+                """
+                
+                // Wait for containers to start
+                sleep(time: 10, unit: 'SECONDS')
             }
         }
         
         stage('Test Integration') {
             steps {
+                // Install curl
+                sh "apk add --no-cache curl"
+                
                 script {
                     def responseCode = sh(
                         script: "curl -s -o /dev/null -w '%{http_code}' http://localhost:${params.LOCAL_PORT}",
@@ -78,11 +84,9 @@ pipeline {
     
     post {
         always {
-            script {
-                sh "docker stop integration-docker-monitor integration-nginx-proxy || true"
-                sh "docker rm integration-docker-monitor integration-nginx-proxy || true"
-                sh "docker network rm test-network || true"
-            }
+            sh "docker stop integration-docker-monitor integration-nginx-proxy || true"
+            sh "docker rm integration-docker-monitor integration-nginx-proxy || true"
+            sh "docker network rm test-network || true"
             cleanWs()
         }
         success {
