@@ -24,7 +24,7 @@ pipelineJob('docker-monitor-build') {
                     branch(gitBranch)
                 }
             }
-            scriptPath('jenkins/jobs/Jenkinsfile-docker-monitor')
+            scriptPath('jenkins/jobs/Jenkinsfile_docker_monitor')
         }
     }
     
@@ -54,7 +54,7 @@ pipelineJob('nginx-proxy-build') {
                     branch(gitBranch)
                 }
             }
-            scriptPath('jenkins/jobs/Jenkinsfile-nginx-proxy')
+            scriptPath('jenkins/jobs/Jenkinsfile_nginx_proxy')
         }
     }
     
@@ -84,7 +84,7 @@ pipelineJob('integration-test') {
                     branch(gitBranch)
                 }
             }
-            scriptPath('jenkins/jobs/Jenkinsfile-integration-test')
+            scriptPath('jenkins/jobs/Jenkinsfile_integration_test')
         }
     }
     
