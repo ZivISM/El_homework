@@ -18,7 +18,7 @@ pipeline {
             steps {
                 dir('docker-monitor') {
                     script {
-                        sh "docker build -t ${params.DOCKER_HUB_USERNAME}/${params.IMAGE_NAME}:${params.IMAGE_TAG} -f dockerfile ."
+                        docker.build("${params.DOCKER_HUB_USERNAME}/${params.IMAGE_NAME}:${params.IMAGE_TAG}", "-f dockerfile .")
                     }
                 }
             }
@@ -26,9 +26,10 @@ pipeline {
         
         stage('Push to Docker Hub') {
             steps {
-                withCredentials([string(credentialsId: 'docker-hub-credentials', variable: 'DOCKER_HUB_PASSWORD')]) {
-                    sh "echo ${DOCKER_HUB_PASSWORD} | docker login -u ${params.DOCKER_HUB_USERNAME} --password-stdin"
-                    sh "docker push ${params.DOCKER_HUB_USERNAME}/${params.IMAGE_NAME}:${params.IMAGE_TAG}"
+                script {
+                    docker.withRegistry('https://registry.hub.docker.com', 'docker-hub-credentials') {
+                        docker.image("${params.DOCKER_HUB_USERNAME}/${params.IMAGE_NAME}:${params.IMAGE_TAG}").push()
+                    }
                 }
             }
         }
@@ -36,7 +37,6 @@ pipeline {
     
     post {
         always {
-            sh 'docker logout'
             cleanWs()
         }
         success {

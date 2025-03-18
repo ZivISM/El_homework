@@ -13,50 +13,35 @@ pipeline {
             }
         }
         
-        stage('Pull Latest Images') {
-            steps {
-                sh "docker pull ${params.DOCKER_HUB_USERNAME}/docker-monitor:latest"
-                sh "docker pull ${params.DOCKER_HUB_USERNAME}/nginx-proxy:latest"
-            }
-        }
-        
-        stage('Create Network') {
+        stage('Prepare for Testing') {
             steps {
                 script {
+                    // Pull the latest images
+                    docker.image("${params.DOCKER_HUB_USERNAME}/docker-monitor:latest").pull()
+                    docker.image("${params.DOCKER_HUB_USERNAME}/nginx-proxy:latest").pull()
+                    
+                    // Create network
                     sh "docker network create --driver bridge test-network || true"
-                }
-            }
-        }
-        
-        stage('Run Docker Monitor Container') {
-            steps {
-                script {
+                    
+                    // Run Docker Monitor container
                     sh """
                     docker run -d --name integration-docker-monitor \
                       --network test-network \
                       -v /var/run/docker.sock:/var/run/docker.sock \
                       ${params.DOCKER_HUB_USERNAME}/docker-monitor:latest
                     """
-                }
-            }
-        }
-        
-        stage('Run Nginx Proxy Container') {
-            steps {
-                script {
+                    
+                    // Run Nginx Proxy container
                     sh """
                     docker run -d --name integration-nginx-proxy \
                       --network test-network \
                       -p ${params.LOCAL_PORT}:80 \
                       ${params.DOCKER_HUB_USERNAME}/nginx-proxy:latest
                     """
+                    
+                    // Wait for containers to start
+                    sleep(time: 10, unit: 'SECONDS')
                 }
-            }
-        }
-        
-        stage('Wait for Containers to Start') {
-            steps {
-                sleep(time: 10, unit: 'SECONDS')
             }
         }
         
@@ -93,9 +78,11 @@ pipeline {
     
     post {
         always {
-            sh "docker stop integration-docker-monitor integration-nginx-proxy || true"
-            sh "docker rm integration-docker-monitor integration-nginx-proxy || true"
-            sh "docker network rm test-network || true"
+            script {
+                sh "docker stop integration-docker-monitor integration-nginx-proxy || true"
+                sh "docker rm integration-docker-monitor integration-nginx-proxy || true"
+                sh "docker network rm test-network || true"
+            }
             cleanWs()
         }
         success {
