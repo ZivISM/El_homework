@@ -1,10 +1,5 @@
 pipeline {
-    agent {
-        docker {
-            image 'docker:latest'
-            args '-v /var/run/docker.sock:/var/run/docker.sock'
-        }
-    }
+    agent any
     
     parameters {
         string(name: 'DOCKER_HUB_USERNAME', defaultValue: 'zivism', description: 'Docker Hub username')
