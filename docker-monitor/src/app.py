@@ -1,4 +1,4 @@
-from flask import Flask, render_template
+from flask import Flask, render_template, request
 import subprocess
 import json
 
@@ -7,6 +7,9 @@ app = Flask(__name__)
 @app.route('/')
 def index():
     try:
+        # Get all request headers
+        headers = dict(request.headers)
+        
         # Use subprocess to run docker command directly
         result = subprocess.run(
             ['docker', 'ps', '--format', '{{json .}}'],
@@ -32,7 +35,7 @@ def index():
                 except json.JSONDecodeError:
                     continue
         
-        return render_template('index.html', containers=containers)
+        return render_template('index.html', containers=containers, headers=headers)
     except Exception as e:
         error_message = str(e)
         return render_template('index.html', error=error_message)
