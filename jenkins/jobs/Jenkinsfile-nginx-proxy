@@ -1,0 +1,49 @@
+pipeline {
+    agent any
+    
+    parameters {
+        string(name: 'DOCKER_HUB_USERNAME', defaultValue: 'zivism', description: 'Docker Hub username')
+        string(name: 'IMAGE_NAME', defaultValue: 'nginx-proxy', description: 'Docker image name')
+        string(name: 'IMAGE_TAG', defaultValue: 'latest', description: 'Docker image tag')
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+        
+        stage('Build Docker Image') {
+            steps {
+                dir('nginx-proxy') {
+                    script {
+                        sh "docker build -t ${params.DOCKER_HUB_USERNAME}/${params.IMAGE_NAME}:${params.IMAGE_TAG} ."
+                    }
+                }
+            }
+        }
+        
+        stage('Push to Docker Hub') {
+            steps {
+                withCredentials([string(credentialsId: 'docker-hub-credentials', variable: 'DOCKER_HUB_PASSWORD')]) {
+                    sh "echo ${DOCKER_HUB_PASSWORD} | docker login -u ${params.DOCKER_HUB_USERNAME} --password-stdin"
+                    sh "docker push ${params.DOCKER_HUB_USERNAME}/${params.IMAGE_NAME}:${params.IMAGE_TAG}"
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            sh 'docker logout'
+            cleanWs()
+        }
+        success {
+            echo 'Nginx proxy Docker image successfully built and pushed to Docker Hub'
+        }
+        failure {
+            echo 'Failed to build or push Nginx proxy Docker image'
+        }
+    }
+} 

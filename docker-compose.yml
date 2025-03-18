@@ -1,0 +1,21 @@
+version: '3'
+
+services:
+  docker-monitor:
+    image: zivism/docker-monitor:latest
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - app-network
+  
+  nginx-proxy:
+    image: zivism/nginx-proxy:latest
+    ports:
+      - "80:80"
+    depends_on:
+      - docker-monitor
+    networks:
+      - app-network
+
+networks:
+  app-network: 
