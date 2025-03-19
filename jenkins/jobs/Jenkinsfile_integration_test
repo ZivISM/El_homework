@@ -46,21 +46,34 @@ pipeline {
         stage('Test Integration') {
             steps {
                 script {
-                    def responseCode = sh(
-                        script: "curl -s -o /dev/null -w '%{http_code}' http://localhost:${params.LOCAL_PORT}",
+                    // Get the container's IP address instead of using localhost
+                    def nginxIp = sh(
+                        script: "docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' integration-nginx-proxy",
                         returnStdout: true
                     ).trim()
+                    
+                    echo "Nginx container IP: ${nginxIp}"
+                    
+                    // Test via the container's IP
+                    def responseCode = sh(
+                        script: "curl -s -o /dev/null -w '%{http_code}' http://${nginxIp}:80 || echo 'Failed with exit code \$?'",
+                        returnStdout: true
+                    ).trim()
+                    
+                    echo "Response code: ${responseCode}"
                     
                     if (responseCode == "200") {
                         echo "Integration test passed! Received HTTP 200 OK response."
                         
                         // Also check if the X-Source-IP header is being added
                         def responseHeaders = sh(
-                            script: "curl -s -D - http://localhost:${params.LOCAL_PORT} -o /dev/null | grep -i 'X-Source-IP'",
+                            script: "curl -s -D - http://${nginxIp}:80 -o /dev/null | grep -i 'X-Source-IP' || echo 'Header not found'",
                             returnStdout: true
                         ).trim()
                         
-                        if (responseHeaders) {
+                        echo "Response headers: ${responseHeaders}"
+                        
+                        if (responseHeaders && responseHeaders != "Header not found") {
                             echo "X-Source-IP header found: ${responseHeaders}"
                             echo "All tests passed successfully!"
                         } else {
