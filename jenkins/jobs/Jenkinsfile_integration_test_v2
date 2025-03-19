@@ -12,8 +12,14 @@ pipeline {
             }
         }
         
-        stage('Prepare for Testing') {
+        stage('Prepare Environment') {
             steps {
+                // Clean up any existing containers or networks
+                sh """
+                docker rm -f integration-docker-monitor integration-nginx-proxy || true
+                docker network rm test-network || true
+                """
+                
                 // Pull the latest images
                 sh "docker pull ${params.DOCKER_HUB_USERNAME}/docker-monitor:latest"
                 sh "docker pull ${params.DOCKER_HUB_USERNAME}/nginx-proxy:latest"
@@ -29,57 +35,35 @@ pipeline {
                   ${params.DOCKER_HUB_USERNAME}/docker-monitor:latest
                 """
                 
-                // Run Nginx Proxy container 
+                // Check if the docker-monitor container is running
+                sh "docker ps | grep integration-docker-monitor || (echo 'Docker Monitor container failed to start' && docker logs integration-docker-monitor && exit 1)"
+                
+                // Sleep to make sure Docker Monitor is fully started
+                sleep(time: 5, unit: 'SECONDS')
+                
+                // Run Nginx Proxy container with network alias to match existing config
                 sh """
                 docker run -d --name integration-nginx-proxy \\
                   --network test-network \\
+                  --network-alias docker-monitor \\
                   ${params.DOCKER_HUB_USERNAME}/nginx-proxy:latest
                 """
                 
-                // Wait for containers to start
-                sleep(time: 5, unit: 'SECONDS')
-                
-                // Check if containers are running
-                sh """
-                echo "Checking container status:"
-                docker ps -a
-                
-                echo "Docker Monitor logs:"
-                docker logs integration-docker-monitor
-                
-                echo "Nginx Proxy logs:"
-                docker logs integration-nginx-proxy
-                """
-                
-                // Check if the Nginx container is running before proceeding
-                def nginxRunning = sh(
-                    script: "docker inspect -f '{{.State.Running}}' integration-nginx-proxy",
-                    returnStdout: true
-                ).trim()
-                
-                if (nginxRunning != "true") {
-                    error "Nginx container is not running. Cannot proceed with tests."
-                }
-                
-                // Install curl in the Nginx container (Alpine based)
-                sh """
-                docker exec integration-nginx-proxy apk add --no-cache curl
-                """
+                // Check if the nginx container is running
+                sh "docker ps | grep integration-nginx-proxy || (echo 'Nginx container failed to start' && docker logs integration-nginx-proxy && exit 1)"
                 
                 // Install curl in the Docker Monitor container
-                sh """
-                docker exec integration-docker-monitor apt-get update && apt-get install -y curl
-                """
+                sh "docker exec integration-docker-monitor apt-get update && apt-get install -y curl || true"
+                
+                // Wait a moment for the services to be fully up
+                sleep(time: 5, unit: 'SECONDS')
             }
         }
         
         stage('Test Integration') {
             steps {
                 script {
-                    // Verify containers are running
-                    sh "docker ps -a --format '{{.Names}} - {{.Status}}' | grep integration"
-                    
-                    // Test the Nginx proxy by curling through it to the Docker Monitor app
+                    // Test connection from Docker Monitor to Nginx
                     def proxyResponse = sh(
                         script: "docker exec integration-docker-monitor curl -s -o /dev/null -w '%{http_code}' http://integration-nginx-proxy:80 || echo 'Failed with exit code \$?'",
                         returnStdout: true
@@ -90,7 +74,7 @@ pipeline {
                     if (proxyResponse == "200") {
                         echo "Integration test passed! Nginx proxy is correctly forwarding to Docker Monitor."
                         
-                        // Check if the X-Source-IP header is being added
+                        // Check if the X-Source-IP header is present
                         def responseHeaders = sh(
                             script: "docker exec integration-docker-monitor curl -s -D - http://integration-nginx-proxy:80 | grep -i 'X-Source-IP' || echo 'Header not found'",
                             returnStdout: true
