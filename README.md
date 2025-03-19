@@ -1,89 +1,200 @@
-# Docker Container Monitor
+# Docker Container Monitoring System
 
-A Flask web application that monitors Docker containers running on the host system. The application itself runs in a Docker container and communicates with the host's Docker daemon to list all running containers.
+A complete DevOps solution for monitoring Docker containers with a Flask web application, an Nginx reverse proxy, and a fully automated CI/CD pipeline using Jenkins.
 
-## Features
+## Overview
 
-- Lists all running Docker containers on the host
-- Shows container ID, name, image, and status
-- Runs in a Docker container itself
-- Modern, responsive web interface
+This project demonstrates a complete containerized application stack with:
 
-## How It Works
+1. **Docker Monitor**: A Flask application that displays running Docker containers
+2. **Nginx Proxy**: A reverse proxy that adds headers and forwards requests
+3. **CI/CD Pipeline**: Jenkins jobs for building, testing, and deployment
+4. **Docker Compose**: For local development and testing
 
-The application uses the Docker CLI from inside the container to interact with the host's Docker daemon via the mounted Docker socket. This approach (Docker-out-of-Docker or DooD) allows the container to communicate with the host's Docker daemon without running a separate Docker daemon inside the container.
-
-## Project Structure
+## Architecture
 
 ```
+                  +----------------+
+                  |                |
+Users ----------> |  Nginx Proxy   | -------+
+                  |  (Port 80)     |        |
+                  +----------------+        |
+                                           |
+                                           v
+                  +----------------+    +----------------+
+                  |                |    |                |
+                  | Docker Socket  | <- | Docker Monitor |
+                  | /var/run/docker.sock|  (Port 5000)   |
+                  +----------------+    +----------------+
+```
+
+## Components
+
+### 1. Docker Monitor Application
+
+The core Flask application that monitors Docker containers running on the host system. The application communicates with the host's Docker daemon via the mounted Docker socket.
+
+**Key Features:**
+- Lists all running Docker containers
+- Shows container ID, name, image, and status
+- Displays incoming HTTP headers
+- Runs in a Docker container using Docker-out-of-Docker (DooD) approach
+
+**Directory Structure:**
+```
 docker-monitor/
-├── dockerfile         # Docker image definition
+├── Dockerfile         # Docker image definition
 ├── requirements.txt   # Python dependencies
-├── run_container.sh   # Script to build and run the container
-├── stop_container.sh  # Script to stop and remove the container
 └── src/
     ├── app.py         # Flask application
     └── templates/     # HTML templates
         └── index.html # Main page template
 ```
 
+### 2. Nginx Proxy
+
+A reverse proxy that sits in front of the Docker Monitor application, adding custom headers and providing an additional layer of abstraction.
+
+**Key Features:**
+- Forwards requests to the Docker Monitor application
+- Adds the X-Source-IP header with the client's IP address
+- Provides a single entry point for the application
+
+**Directory Structure:**
+```
+nginx-proxy/
+├── Dockerfile         # Docker image definition
+├── nginx.conf         # Nginx configuration
+└── README.md          # Documentation
+```
+
+### 3. Jenkins CI/CD Pipeline
+
+Automated build, test, and deployment pipeline using Jenkins.
+
+**Key Features:**
+- Separate Jenkins jobs for building Docker Monitor and Nginx Proxy images
+- Integration test job that verifies the entire system works correctly
+- Automated Docker image builds and pushes to Docker Hub
+
+**Directory Structure:**
+```
+jenkins/
+├── jobs/
+│   ├── Jenkinsfile_docker_monitor    # Pipeline for Docker Monitor
+│   ├── Jenkinsfile_nginx_proxy       # Pipeline for Nginx Proxy
+│   └── Jenkinsfile_integration_test  # Pipeline for integration tests
+└── jenkins_jobs.groovy               # Job DSL script to set up Jenkins jobs
+```
+
 ## Quick Start
 
-The easiest way to run the application is using the provided scripts:
+### Local Development with Docker Compose
+
+The easiest way to run the application locally is using Docker Compose:
 
 ```bash
-# To build and start the container
-./run_container.sh
+# Build and start the containers
+docker-compose up -d
 
-# To stop and remove the container
-./stop_container.sh
+# Access the application
+# Navigate to http://localhost:80 in your browser
+
+# Stop and remove the containers
+docker-compose down
 ```
 
-Then open your browser and navigate to http://localhost:5001.
+### Manual Container Setup
 
-## Manual Setup
+If you prefer to run the containers manually:
 
-If you prefer to run the commands manually:
-
-1. Build the Docker image:
+1. **Build and run the Docker Monitor:**
    ```bash
+   cd docker-monitor
    docker build -t docker-monitor .
+   docker run -d -p 5000:5000 -v /var/run/docker.sock:/var/run/docker.sock --name docker-monitor docker-monitor
    ```
 
-2. Run the container:
+2. **Build and run the Nginx Proxy:**
    ```bash
-   docker run -d -p 5001:5000 -v /var/run/docker.sock:/var/run/docker.sock --name docker-monitor docker-monitor
+   cd nginx-proxy
+   docker build -t nginx-proxy .
+   docker run -d -p 80:80 --link docker-monitor:docker-monitor --name nginx-proxy nginx-proxy
    ```
 
-3. Access the application at http://localhost:5001
+3. **Access the application at http://localhost:80**
 
-## Technical Details
+## CI/CD Pipeline Setup
 
-### Flask Application (app.py)
+### Prerequisites
 
-The application uses Python's `subprocess` module to execute Docker CLI commands directly:
+- Jenkins server with Docker installed
+- Docker Hub account
+- GitHub account
 
-```python
-result = subprocess.run(
-    ['docker', 'ps', '--format', '{{json .}}'],
-    capture_output=True,
-    text=True
-)
+### Setting Up Jenkins
+
+1. **Install Required Plugins:**
+   - Docker Pipeline
+   - Docker
+   - Job DSL
+   - Pipeline
+
+2. **Configure Docker Hub Credentials:**
+   - Add Docker Hub credentials with ID 'docker-hub-credentials'
+
+3. **Set Up Jenkins Jobs:**
+   - Create a seed job that uses the jenkins_jobs.groovy script to generate all pipeline jobs
+   - Run the seed job to create all pipeline jobs
+
+### Pipeline Jobs
+
+1. **Docker Monitor Build:**
+   - Builds the Docker Monitor image
+   - Pushes it to Docker Hub
+
+2. **Nginx Proxy Build:**
+   - Builds the Nginx Proxy image
+   - Pushes it to Docker Hub
+
+3. **Integration Test:**
+   - Creates a test environment with both containers
+   - Verifies the integration between components
+   - Checks for proper header forwarding
+
+## Deployment
+
+The Docker images can be deployed to any environment that has Docker installed:
+
+```bash
+# Pull the images
+docker pull zivism/docker-monitor:latest
+docker pull zivism/nginx-proxy:latest
+
+# Create a network
+docker network create app-network
+
+# Run the Docker Monitor
+docker run -d --name docker-monitor \
+  --network app-network \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  zivism/docker-monitor:latest
+
+# Run the Nginx Proxy
+docker run -d --name nginx-proxy \
+  --network app-network \
+  -p 80:80 \
+  zivism/nginx-proxy:latest
 ```
 
-It then parses the JSON output and displays it using Flask templates.
+## Contributing
 
-### Dockerfile
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/your-feature`)
+3. Commit your changes (`git commit -am 'Add new feature'`)
+4. Push to the branch (`git push origin feature/your-feature`)
+5. Create a new Pull Request
 
-The Dockerfile:
-1. Uses Python 3.9 slim as the base image
-2. Installs curl to download the Docker CLI binary
-3. Downloads the Docker CLI binary directly from Docker's website
-4. Installs Python dependencies
-5. Copies the application code
-6. Exposes port 5000
-7. Runs the Flask application
+## License
 
-### Container Communication
-
-The container communicates with the host's Docker daemon through the Docker socket, which is mounted as a volume (`-v /var/run/docker.sock:/var/run/docker.sock`).
+This project is licensed under the MIT License - see the LICENSE file for details.
