@@ -29,11 +29,16 @@ pipeline {
                   ${params.DOCKER_HUB_USERNAME}/docker-monitor:latest
                 """
                 
-                // Run Nginx Proxy container without exposing external port 
+                // Run Nginx Proxy container 
                 sh """
                 docker run -d --name integration-nginx-proxy \\
                   --network test-network \\
                   ${params.DOCKER_HUB_USERNAME}/nginx-proxy:latest
+                """
+                
+                // Install curl in the Nginx container (Alpine based)
+                sh """
+                docker exec integration-nginx-proxy apk add --no-cache curl
                 """
                 
                 // Wait for containers to start
@@ -44,57 +49,41 @@ pipeline {
         stage('Test Integration') {
             steps {
                 script {
-                    // Get the container's IP address 
-                    def nginxIp = sh(
-                        script: "docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' integration-nginx-proxy",
+                    // Verify containers are running
+                    sh "docker ps -a --format '{{.Names}} - {{.Status}}' | grep integration"
+                    
+                    // Test the Nginx proxy by curling through it to the Docker Monitor app
+                    def proxyResponse = sh(
+                        script: "docker exec integration-docker-monitor curl -s -o /dev/null -w '%{http_code}' http://integration-nginx-proxy:80 || echo 'Failed with exit code \$?'",
                         returnStdout: true
                     ).trim()
                     
-                    echo "Nginx container IP: ${nginxIp}"
+                    echo "Proxy response code: ${proxyResponse}"
                     
-                    // Get the docker monitor container's IP address for debugging
-                    def monitorIp = sh(
-                        script: "docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' integration-docker-monitor",
-                        returnStdout: true
-                    ).trim()
-                    
-                    echo "Docker Monitor container IP: ${monitorIp}"
-                    
-                    // Run curl from inside the Docker network using docker exec
-                    def responseCode = sh(
-                        script: "docker exec integration-nginx-proxy curl -s -o /dev/null -w '%{http_code}' http://integration-docker-monitor:5000 || echo 'Failed with exit code \$?'",
-                        returnStdout: true
-                    ).trim()
-                    
-                    echo "Response code: ${responseCode}"
-                    
-                    if (responseCode == "200") {
-                        echo "Integration test passed! Received HTTP 200 OK response."
+                    if (proxyResponse == "200") {
+                        echo "Integration test passed! Nginx proxy is correctly forwarding to Docker Monitor."
                         
-                        // Check if the proxy is correctly adding headers by examining headers from inside Docker network
+                        // Check if the X-Source-IP header is being added
                         def responseHeaders = sh(
-                            script: "docker exec integration-nginx-proxy curl -s -D - http://integration-docker-monitor:5000 -o /dev/null | grep -i 'X-Source-IP' || echo 'Header not found'",
+                            script: "docker exec integration-docker-monitor curl -s -D - http://integration-nginx-proxy:80 | grep -i 'X-Source-IP' || echo 'Header not found'",
                             returnStdout: true
                         ).trim()
                         
                         echo "Response headers: ${responseHeaders}"
                         
-                        // Now test the proxy itself
-                        def proxyResponse = sh(
-                            script: "docker exec integration-docker-monitor curl -s -o /dev/null -w '%{http_code}' http://integration-nginx-proxy:80 || echo 'Failed with exit code \$?'",
-                            returnStdout: true
-                        ).trim()
-                        
-                        echo "Proxy response code: ${proxyResponse}"
-                        
-                        if (proxyResponse == "200") {
-                            echo "Proxy test passed! Received HTTP 200 OK response."
+                        if (responseHeaders && responseHeaders != "Header not found") {
+                            echo "X-Source-IP header found: ${responseHeaders}"
                             echo "All tests passed successfully!"
                         } else {
-                            error "Proxy test failed! Received HTTP ${proxyResponse} response."
+                            echo "X-Source-IP header test failed - checking nginx logs"
+                            sh "docker logs integration-nginx-proxy"
+                            error "X-Source-IP header not found in response. Integration test failed."
                         }
                     } else {
-                        error "Integration test failed! Received HTTP ${responseCode} response."
+                        echo "Proxy test failed - checking container logs"
+                        sh "docker logs integration-docker-monitor"
+                        sh "docker logs integration-nginx-proxy"
+                        error "Integration test failed! Received HTTP ${proxyResponse} response."
                     }
                 }
             }
