@@ -70,8 +70,8 @@ pipelineJob('nginx-proxy-build') {
 }
 
 // Job 3: Run integration tests
-pipelineJob('integration-test') {
-    description('Run integration tests for Docker Monitor and Nginx Proxy')
+pipelineJob('integration-test-v2') {
+    description('Run integration tests for Docker Monitor and Nginx Proxy (updated version)')
     
     definition {
         cpsScm {
@@ -84,13 +84,12 @@ pipelineJob('integration-test') {
                     branch(gitBranch)
                 }
             }
-            scriptPath('jenkins/jobs/Jenkinsfile_integration_test')
+            scriptPath('jenkins/jobs/Jenkinsfile_integration_test_v2')
         }
     }
     
     parameters {
         stringParam('DOCKER_HUB_USERNAME', dockerHubUsername, 'Docker Hub username')
-        stringParam('LOCAL_PORT', '8080', 'Local port to expose Nginx proxy on')
     }
     
     triggers {
