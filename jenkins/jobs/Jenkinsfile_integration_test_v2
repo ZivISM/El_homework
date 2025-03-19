@@ -31,6 +31,7 @@ pipeline {
                 sh """
                 docker run -d --name integration-docker-monitor \\
                   --network test-network \\
+                  --network-alias docker-monitor \\
                   -v /var/run/docker.sock:/var/run/docker.sock \\
                   ${params.DOCKER_HUB_USERNAME}/docker-monitor:latest
                 """
@@ -41,19 +42,18 @@ pipeline {
                 // Sleep to make sure Docker Monitor is fully started
                 sleep(time: 5, unit: 'SECONDS')
                 
-                // Run Nginx Proxy container with network alias to match existing config
+                // Run Nginx Proxy container
                 sh """
                 docker run -d --name integration-nginx-proxy \\
                   --network test-network \\
-                  --network-alias docker-monitor \\
                   ${params.DOCKER_HUB_USERNAME}/nginx-proxy:latest
                 """
                 
                 // Check if the nginx container is running
                 sh "docker ps | grep integration-nginx-proxy || (echo 'Nginx container failed to start' && docker logs integration-nginx-proxy && exit 1)"
                 
-                // Install curl in the Docker Monitor container
-                sh "docker exec integration-docker-monitor apt-get update && apt-get install -y curl || true"
+                // Verify network connections by inspecting network
+                sh "docker network inspect test-network"
                 
                 // Wait a moment for the services to be fully up
                 sleep(time: 5, unit: 'SECONDS')
