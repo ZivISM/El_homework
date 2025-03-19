@@ -35,14 +35,41 @@ pipeline {
                   --network test-network \\
                   ${params.DOCKER_HUB_USERNAME}/nginx-proxy:latest
                 """
+                
                 // Wait for containers to start
-                sleep(time: 10, unit: 'SECONDS')
-
+                sleep(time: 5, unit: 'SECONDS')
+                
+                // Check if containers are running
+                sh """
+                echo "Checking container status:"
+                docker ps -a
+                
+                echo "Docker Monitor logs:"
+                docker logs integration-docker-monitor
+                
+                echo "Nginx Proxy logs:"
+                docker logs integration-nginx-proxy
+                """
+                
+                // Check if the Nginx container is running before proceeding
+                def nginxRunning = sh(
+                    script: "docker inspect -f '{{.State.Running}}' integration-nginx-proxy",
+                    returnStdout: true
+                ).trim()
+                
+                if (nginxRunning != "true") {
+                    error "Nginx container is not running. Cannot proceed with tests."
+                }
+                
                 // Install curl in the Nginx container (Alpine based)
                 sh """
                 docker exec integration-nginx-proxy apk add --no-cache curl
                 """
                 
+                // Install curl in the Docker Monitor container
+                sh """
+                docker exec integration-docker-monitor apt-get update && apt-get install -y curl
+                """
             }
         }
         
