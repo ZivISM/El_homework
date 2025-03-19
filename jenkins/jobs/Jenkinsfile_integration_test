@@ -35,14 +35,14 @@ pipeline {
                   --network test-network \\
                   ${params.DOCKER_HUB_USERNAME}/nginx-proxy:latest
                 """
-                
+                // Wait for containers to start
+                sleep(time: 10, unit: 'SECONDS')
+
                 // Install curl in the Nginx container (Alpine based)
                 sh """
                 docker exec integration-nginx-proxy apk add --no-cache curl
                 """
                 
-                // Wait for containers to start
-                sleep(time: 10, unit: 'SECONDS')
             }
         }
         
