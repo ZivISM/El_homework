@@ -1,0 +1,18 @@
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: nginx-app-scaler
+spec:
+  scaleTargetRef:
+    name: nginx-app
+    kind: Deployment
+  minReplicaCount: 1
+  maxReplicaCount: 10
+  cooldownPeriod: 30
+  pollingInterval: 1
+  triggers:
+  - type: cpu
+    metadata:
+      type: Utilization
+      value: "20"
+      metricType: Utilization 
