@@ -37,4 +37,7 @@ ENV/
 .DS_Store
 Thumbs.db 
 
-k8s/
+.terraform/
+.terraform.lock.hcl
+terraform.tfstate
+terraform.tfstate.backup
